@@ -17,6 +17,8 @@ interface ReqQuery {
     fileNameWithExtension: string;
     outputPreviewMainDirName?: MainDir;
     outputFullSizeMainDirName?: MainDir;
+    outputPreviewFilePath: string;
+    outputFullSizeFilePath: string;
     previewSubfolder?: string;
     fullSizeSubfolder?: string;
     fileType?: string;
@@ -37,6 +39,8 @@ app.get('/sharp', async (req: Request<undefined, undefined, undefined, ReqQuery>
     try {
         const inputMainDirName = req.query.inputMainDirName;
         const fileNameWithExtension = req.query.fileNameWithExtension;
+        const outputPreviewFilePath = req.query.outputPreviewFilePath;
+        const outputFullSizeFilePath = req.query.outputFullSizeFilePath;
 
         const outputPreviewMainDirName = req.query.outputPreviewMainDirName || inputMainDirName;
         const outputFullSizeMainDirName = req.query.outputFullSizeMainDirName || inputMainDirName;
@@ -69,8 +73,6 @@ app.get('/sharp', async (req: Request<undefined, undefined, undefined, ReqQuery>
         }
 
         const input: SharpProps['input'] = { mainDirName: inputMainDirName, fileNameWithExtension };
-        const outputPreview: SharpProps['outputPreview'] = { mainDirName: outputPreviewMainDirName, subfolder: previewSubfolder };
-        const outputFullSize: SharpProps['outputFullSize'] = { mainDirName: outputFullSizeMainDirName, subfolder: fullSizeSubfolder };
         
         if (jpegOptions || resizeOptions) {
             options = {
@@ -80,14 +82,14 @@ app.get('/sharp', async (req: Request<undefined, undefined, undefined, ReqQuery>
         }
 
         // Call the processImage function with the parameters
-        const result = await processImage({ input, outputPreview, outputFullSize, fileType, options, convertHeicToFullSizeJpeg});
+        const result = await processImage({ input, outputPreviewFilePath, outputFullSizeFilePath, fileType, options, convertHeicToFullSizeJpeg});
 
         // Send the result back to the client
         res.json(result);
     } catch (error) {
         // Ensure that error.message is accessible
         const message = error instanceof Error ? error.message : 'Unknown error';
-        res.status(500).send(`Error processing image: ${message}`);
+        res.status(500).send(`❌ Error processing image: ${message}`);
     }
 });
 

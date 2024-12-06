@@ -5,6 +5,7 @@ enum Envs {
 
 const env: Envs = Envs.DOCKER;
 
+export const ATTEMPTS_TO_CREATE_PREVIEW = 3;
 export const PREVIEW_EXTENSION = 'jpg';
 
 export enum MainDir {

@@ -1,8 +1,10 @@
 import type { JpegOptions, ResizeOptions, SharpOptions, WriteableMetadata } from "sharp";
 import sharp from "sharp";
-import { MainDir, NameSuffix, config } from "./constants";
+import { ATTEMPTS_TO_CREATE_PREVIEW, MainDir, NameSuffix, config } from "./constants";
 import { ensureDir } from 'fs-extra';
 import * as path from 'path';
+
+const TIMEOUT = 1000
 
 type MainFolder = typeof config.mainFolder[keyof typeof config.mainFolder]
 
@@ -18,8 +20,8 @@ type Output = {
 
 type ConfigProps = {
     input: Input;
-    outputPreview: Output;
-    outputFullSize: Output;
+    outputPreviewFilePath: string;
+    outputFullSizeFilePath: string;
 }
 
 type SharpSettings = {
@@ -30,38 +32,24 @@ type SharpSettings = {
 }
 
 type ReturnData = {
-    inputMainDir: MainFolder;
     inputFilePath: string;
-    outputPreviewMainDir: MainFolder;
-    outputFullSizeMainDir: MainFolder;
     fullSizePath: string;
     previewPath: string;
 }
 
-const normalizePath = (path: string): string => {
-    return path.replace(/\/{2,}/g, '/');
-  };
+const wait = async (timeMs: number = 100, func?: Function) => {  
+    await new Promise(resolve => { setTimeout(resolve, timeMs) })
+      .then(() => func && func())
+  }
 
-const getConfig = ({input, outputPreview, outputFullSize}: ConfigProps): ReturnData => {
+const getConfig = ({input, outputPreviewFilePath, outputFullSizeFilePath}: ConfigProps): ReturnData => {
     const { mainDirName: inputMainDirName, fileNameWithExtension } = input;
-    const { mainDirName: outputPreviewMainDirName, subfolder: previewSubfolder } = outputPreview;
-    const { mainDirName: outputFullSizeMainDirName , subfolder: fullSizeSubfolder } = outputFullSize;
     const inputMainDir = config.mainFolder[inputMainDirName];
-    const outputPreviewMainDir = config.mainFolder[outputPreviewMainDirName];
-    const outputFullSizeMainDir = config.mainFolder[outputFullSizeMainDirName || outputPreviewMainDirName];
-
-    // remove extension and filePath
-    const inputFileName = fileNameWithExtension
-        .replace(/.\w+$/, '')
-        .split('/').at(-1)
 
     return {
-        inputMainDir: inputMainDir,
         inputFilePath: `${inputMainDir}/${fileNameWithExtension}`,
-        outputPreviewMainDir: outputPreviewMainDir,
-        outputFullSizeMainDir: outputFullSizeMainDir,
-        previewPath: normalizePath(`${outputPreviewMainDir}/${previewSubfolder}/${inputFileName}${NameSuffix.preview}.${config.previewExtension}`),
-        fullSizePath: normalizePath(`${outputFullSizeMainDir}/${fullSizeSubfolder || previewSubfolder}/${inputFileName}${NameSuffix.fullSize}.${config.previewExtension}`),
+        previewPath: path.normalize(`${inputMainDir}/${outputPreviewFilePath}`),
+        fullSizePath: path.normalize(`${inputMainDir}/${outputFullSizeFilePath}`)
     }
 }
 
@@ -72,15 +60,13 @@ export interface SharpProps extends ConfigProps {
 }
 export const processImage = async ({ 
     input,
+    outputPreviewFilePath,
+    outputFullSizeFilePath,
     fileType,
-    outputFullSize,
-    outputPreview,
     options,
     convertHeicToFullSizeJpeg = true
 }: SharpProps) => {
-    console.log('🚀 ~ options:', options)
-    const filePathConfig = getConfig({input, outputFullSize, outputPreview});
-    console.log('🚀 ~ filePathConfig:', filePathConfig)
+    const filePathConfig = getConfig({input, outputPreviewFilePath, outputFullSizeFilePath});
     const { inputFilePath, fullSizePath, previewPath } = filePathConfig;
     let filePaths: Record<string, string> = {}
 
@@ -100,50 +86,51 @@ export const processImage = async ({
             }
         }
 
-        console.log('Preview created');
-        console.log('Response:', filePaths)
         return filePaths
     } catch (error) {
-        console.error('Error processing file:', error);
+        console.error('❌ Error processing file:', error);
         throw error;
     }
 }
 
-const createImagePreview = async (inputImagePath: string, outputImagePath: string, options?: SharpSettings) => {  
+const createImagePreview = async (inputImagePath: string, outputImagePath: string, options?: SharpSettings, attempt: number = 1) => {
     const { withMetadata, sharpOptions, resizeOptions, jpegOptions } = options || {};
-    const currentJpegOptions = jpegOptions?.quality ? jpegOptions : {...jpegOptions, quality: config.quality };
+    const currentJpegOptions = jpegOptions?.quality ? jpegOptions : { ...jpegOptions, quality: config.quality };
 
-    // Extract the directory path from the outputImagePath
     const outputDir = path.dirname(outputImagePath);
-
-    // Ensure that the directory exists, if not, create it
     await ensureDir(outputDir);
-    console.log(`Ensured existence of directory: ${outputDir}`);
 
-    if (resizeOptions) {
-        await sharp(inputImagePath, sharpOptions)
-          .withMetadata(withMetadata)
-          .jpeg(currentJpegOptions)
-          .resize(resizeOptions)
-          .toFile(outputImagePath)
-          .then(() => {
-            console.log(`Preview created at: ${outputImagePath}`);
-          })
-          .catch((error) => {
-            console.error('Error creating preview:', error);
-            throw error;
-          })
-    } else {
-        await sharp(inputImagePath, sharpOptions)
-          .withMetadata(withMetadata)
-          .jpeg()
-          .toFile(outputImagePath)
-          .then(() => {
-            console.log(`FullSize image created at: ${outputImagePath}`);
-          })
-          .catch((error) => {
-            console.error('Error creating preview:', error);
-            throw error;
-          })
-    }  
+    return new Promise<void>(async (resolve, reject) => {
+        while (attempt <= ATTEMPTS_TO_CREATE_PREVIEW) {
+            try {
+                if (resizeOptions) {
+                    await sharp(inputImagePath, sharpOptions)
+                    .withMetadata(withMetadata)
+                    .jpeg(currentJpegOptions)
+                    .resize(resizeOptions)
+                    .toFile(outputImagePath);
+                } else {
+                    await sharp(inputImagePath, sharpOptions)
+                    .withMetadata(withMetadata)
+                    .jpeg()
+                    .toFile(outputImagePath);
+                }
+                console.log(`✅ Preview created on attempt ${attempt}:`, outputImagePath);
+                break; // Break the loop if successful
+            } catch (error) {
+                console.error(`❌ Error creating preview on attempt ${attempt}:`, error, outputImagePath);
+                console.error('❌ Error props:', {inputImagePath, outputImagePath, resizeOptions, currentJpegOptions, sharpOptions});
+    
+                if (attempt === ATTEMPTS_TO_CREATE_PREVIEW) {
+                    console.error('❌ All attempts failed. Throwing error.', outputImagePath);
+                    reject(error);
+                    break;
+                }
+                console.info(`🔄 Retrying to create preview after ${TIMEOUT}ms (Attempt ${attempt + 1}/3)`, outputImagePath);
+                await wait(TIMEOUT); // Wait for 100ms before retrying
+                attempt++;
+            }
+        }
+        resolve();
+    })
 }
