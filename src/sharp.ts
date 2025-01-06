@@ -105,13 +105,11 @@ const createImagePreview = async (inputImagePath: string, outputImagePath: strin
             try {
                 if (resizeOptions) {
                     await sharp(inputImagePath, sharpOptions)
-                    .withMetadata(withMetadata)
                     .jpeg(currentJpegOptions)
                     .resize(resizeOptions)
                     .toFile(outputImagePath);
                 } else {
                     await sharp(inputImagePath, sharpOptions)
-                    .withMetadata(withMetadata)
                     .jpeg()
                     .toFile(outputImagePath);
                 }
