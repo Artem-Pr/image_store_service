@@ -43,9 +43,9 @@ app.get('/sharp', async (req: Request<undefined, undefined, undefined, ReqQuery>
         const outputFullSizeFilePath = req.query.outputFullSizeFilePath;
 
         const outputPreviewMainDirName = req.query.outputPreviewMainDirName || inputMainDirName;
-        const outputFullSizeMainDirName = req.query.outputFullSizeMainDirName || inputMainDirName;
+        const outputFullSizeMainDirName = req.query.outputFullSizeMainDirName || inputMainDirName; // TODO: Check if needed
         const previewSubfolder = req.query.previewSubfolder || '';
-        const fullSizeSubfolder = req.query.fullSizeSubfolder || '';
+        const fullSizeSubfolder = req.query.fullSizeSubfolder || ''; // TODO: Check if needed
         const fileType = req.query.fileType;
         const convertHeicToFullSizeJpeg = req.query.convertHeicToFullSizeJpeg === 'false' ? false : true;
         const width = req.query.resizeOptionsWidth;
@@ -73,6 +73,10 @@ app.get('/sharp', async (req: Request<undefined, undefined, undefined, ReqQuery>
         }
 
         const input: SharpProps['input'] = { mainDirName: inputMainDirName, fileNameWithExtension };
+        const output: SharpProps['output'] = {
+            mainDirName: outputPreviewMainDirName,
+            subfolder: previewSubfolder
+        };
         
         if (jpegOptions || resizeOptions) {
             options = {
@@ -82,7 +86,7 @@ app.get('/sharp', async (req: Request<undefined, undefined, undefined, ReqQuery>
         }
 
         // Call the processImage function with the parameters
-        const result = await processImage({ input, outputPreviewFilePath, outputFullSizeFilePath, fileType, options, convertHeicToFullSizeJpeg});
+        const result = await processImage({ input, output, outputPreviewFilePath, outputFullSizeFilePath, fileType, options, convertHeicToFullSizeJpeg});
 
         // Send the result back to the client
         res.json(result);

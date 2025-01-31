@@ -14,18 +14,18 @@ type Input = {
 }
 
 type Output = {
-    mainDirName: MainDir;
-    subfolder: string;
+    mainDirName?: MainDir;
+    subfolder?: string;
 }
 
 type ConfigProps = {
     input: Input;
+    output: Output;
     outputPreviewFilePath: string;
     outputFullSizeFilePath: string;
 }
 
 type SharpSettings = {
-    withMetadata?: WriteableMetadata
     sharpOptions?: SharpOptions
     resizeOptions?: ResizeOptions
     jpegOptions?: JpegOptions
@@ -42,14 +42,17 @@ const wait = async (timeMs: number = 100, func?: Function) => {
       .then(() => func && func())
   }
 
-const getConfig = ({input, outputPreviewFilePath, outputFullSizeFilePath}: ConfigProps): ReturnData => {
+const getConfig = ({input, output, outputPreviewFilePath, outputFullSizeFilePath}: ConfigProps): ReturnData => {
     const { mainDirName: inputMainDirName, fileNameWithExtension } = input;
+    const { mainDirName: outputMainDirName, subfolder } = output;
     const inputMainDir = config.mainFolder[inputMainDirName];
+    const outputMainDir = outputMainDirName ? config.mainFolder[outputMainDirName] : inputMainDir;
+    const outputMainDirWithSubfolder = subfolder ? `${outputMainDir}/${subfolder}` : outputMainDir;
 
     return {
         inputFilePath: `${inputMainDir}/${fileNameWithExtension}`,
-        previewPath: path.normalize(`${inputMainDir}/${outputPreviewFilePath}`),
-        fullSizePath: path.normalize(`${inputMainDir}/${outputFullSizeFilePath}`)
+        previewPath: path.normalize(`${outputMainDirWithSubfolder}/${outputPreviewFilePath}`),
+        fullSizePath: path.normalize(`${outputMainDirWithSubfolder}/${outputFullSizeFilePath}`)
     }
 }
 
@@ -60,13 +63,14 @@ export interface SharpProps extends ConfigProps {
 }
 export const processImage = async ({ 
     input,
+    output,
     outputPreviewFilePath,
     outputFullSizeFilePath,
     fileType,
     options,
     convertHeicToFullSizeJpeg = true
 }: SharpProps) => {
-    const filePathConfig = getConfig({input, outputPreviewFilePath, outputFullSizeFilePath});
+    const filePathConfig = getConfig({input, output, outputPreviewFilePath, outputFullSizeFilePath});
     const { inputFilePath, fullSizePath, previewPath } = filePathConfig;
     let filePaths: Record<string, string> = {}
 
@@ -94,7 +98,7 @@ export const processImage = async ({
 }
 
 const createImagePreview = async (inputImagePath: string, outputImagePath: string, options?: SharpSettings, attempt: number = 1) => {
-    const { withMetadata, sharpOptions, resizeOptions, jpegOptions } = options || {};
+    const { sharpOptions, resizeOptions, jpegOptions } = options || {};
     const currentJpegOptions = jpegOptions?.quality ? jpegOptions : { ...jpegOptions, quality: config.quality };
 
     const outputDir = path.dirname(outputImagePath);
@@ -107,6 +111,7 @@ const createImagePreview = async (inputImagePath: string, outputImagePath: strin
                     await sharp(inputImagePath, sharpOptions)
                     .jpeg(currentJpegOptions)
                     .resize(resizeOptions)
+                    .withMetadata()
                     .toFile(outputImagePath);
                 } else {
                     await sharp(inputImagePath, sharpOptions)
